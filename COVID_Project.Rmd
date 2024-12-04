@@ -1,0 +1,151 @@
+---
+title: "COVID"
+author: "Anonymous"
+date: "2024-12-04"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Getting Started
+
+The first step, here, is to download and clean the data.  Because I am following along with what was done in class at this point, I'll skip over the data exploration necessary to determine how to clean the data.
+
+```{r clean}
+library(tidyverse)
+url_in<-"https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
+filenames<-c("time_series_covid19_confirmed_US.csv",  "time_series_covid19_confirmed_global.csv", "time_series_covid19_deaths_US.csv",  "time_series_covid19_deaths_global.csv")
+urls<-str_c(url_in,filenames)
+
+# Read in datasets
+global_cases <- read_csv(urls[2])
+global_deaths <- read_csv(urls[4])
+#us_cases <- read_csv(urls[1])
+#us_deaths <- read_csv(urls[3])
+
+# Clean up global_cases
+# Remove Lat, Long columns and transpose dates to rows instead of columns
+global_cases <- global_cases %>%
+  pivot_longer(cols= -c(`Province/State`,`Country/Region`,Lat,Long),
+               names_to = "date", values_to = "cases") %>%
+  select(-c(Lat,Long)) %>%
+  rename(Country_Region = `Country/Region`,
+         Province_State = `Province/State`) %>%
+  mutate(date = mdy(date))
+
+# Clean up global_deaths
+# Remove Lat, Long columns and transpose dates to rows instead of columns
+global_deaths <- global_deaths %>%
+  pivot_longer(cols= -c(`Province/State`,`Country/Region`,Lat,Long),
+               names_to = "date", values_to = "deaths") %>%
+  select(-c(Lat,Long)) %>%
+  rename(Country_Region = `Country/Region`,
+         Province_State = `Province/State`) %>%
+  mutate(date = mdy(date))
+```
+
+In order to more easily look at the data, I'll also combine it and, at this point, take a peak at the resultant dataset
+
+``` {r examine}
+
+# Combine global data
+global <- global_cases %>%
+  full_join(global_deaths) %>%
+  filter(cases>0)
+
+summary(global)
+str(global)
+
+```
+## Explore Data
+
+The next step in the process is to do some preliminary exploration to help me formulate a research question that I will be able to answer with the available data.  I already have some sense that I'd like to explore differences between countries, so I'll start by plotting the data from just one country.
+
+``` {r explore}
+global %>% filter(Country_Region == "Afghanistan") %>%
+           ggplot(aes(x = date, y= cases)) +
+              geom_point(aes(color = "cases")) +
+              geom_point(aes(y = deaths, color = "deaths")) +
+              #scale_y_log10() +
+              theme(legend.position="bottom",
+                    axis.text.x = element_text(angle=90)) +
+              labs(title="COVID19 in Afghanistan", y=NULL)
+```
+
+## Research Question
+
+For my research question, I was curious about how the death rate changed over time in each country.  That is, relative to overall cases, are some countries better than others in reducing their death rate?  Ideally, I'd love to do this for all countries, but in the essence of time for this project, I will limit this to a subset of the countries, which will be identified later in this document.
+
+## Prepare Data
+
+### Adding Calculated Column
+
+In order to look at death rate over time, I have to add a column for the death rate calculated from cases and deaths.  I'll also take a quick peak at the resultant data.
+
+``` {r prepare}
+global <- global %>%
+  mutate(death_rate = deaths/cases)
+global %>%
+  filter(Country_Region == "Afghanistan") %>%
+           ggplot(aes(x = date, y= death_rate)) +
+              geom_point(aes(color = "rate"))
+```
+
+### Filtering Year
+
+The first thing I notice is that the death rate over this entire time frame does not appear linear, which means that applying lm would be a challenge.  However, if I isolated the data to everything 2022+, then there is a somewhat linear decline in death rate, which would allow me to model this region of time.  Therefore, I'm going to filter the data to only include information after 01-01-2022
+
+``` {r date_filter}
+global <- global %>%
+  filter(date >= '2022-01-01')
+```
+### Identifying Countries of Interest
+
+To simplify identification of which countries I will compare, I'm going to convert Country_Region into a factor and take a look a frequency table of the countries, just to get a sense of all the options.
+
+``` {r factor}
+global <- global %>%
+          mutate(Country_Region = as.factor(Country_Region))
+table(global$Country_Region)
+```
+From this list, I have selected:
+
+- Afghanistan
+- United Kingdom
+- Costa Rica
+
+I picked this set based on their vastly different geographic region, cultures, and degree of isolation. If I were trying to make a "fair" comparison, I should pick countries that are as similar as possible to limit confounding variables.  However, for this analysis, I was simply interested in observing differences and preferred that my selected countries be quite different.
+
+## Analyzing the Data
+
+My next step is to create models of the death rates over time for each of these three countries and look at the different slopes for the models, which represents the change in death rate over time for each country from 2022 onward.
+
+``` {r model}
+# Afghanistan
+afg <- global %>% filter(Country_Region == "Afghanistan")
+mod_afg <- lm(death_rate ~ date, data=afg)
+
+# United Kingdom
+uk <- global %>% filter(Country_Region == "United Kingdom")
+mod_uk <- lm(death_rate ~ date, data=uk)
+
+# Costa Rica
+cr <- global %>% filter(Country_Region == "Costa Rica")
+mod_cr <- lm(death_rate ~ date, data=cr)
+
+# Compare estimated coefficients for slope of data
+c(mod_afg$coefficients["date"],mod_uk$coefficients["date"],mod_cr$coefficients["date"])
+
+```
+
+## Conclusion
+
+Based on this analysis, we see that Costa Rica had the smallest change in its death rate while Afghanistan had the largest.  Again, this can not be used to fairly compare the countries as they are so different from one another.  Additionally, differences in their COVID policies or how much of a change they were able to make in their death rates prior to my 2022 cutoff could impact how much their death rate changed over the time period I explored.
+
+A few next steps could be to:
+
+- Expand this exploration to include all of the countries in the dataset
+- Determine how early the date cutoff can be while still maintaining a linear relationship that can be appropriately modeled by lm (to compare countries, the cutoff should still be the same for all countries)
+- Identify possible confounders (e.g. population, # bordering nations, etc) that could be quantified/categorized and built into the model
