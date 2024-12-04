@@ -1,0 +1,112 @@
+---
+title: "NYPD Shootings"
+author: "Anonymous"
+date: "2024-11-30"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+This document represents one of my first assignments programming in R for the **Data Science as a Field** course as part of the Masters of Science in Data Science (MS-DS) degree program from *University of Colorado Boulder* offered via Coursera.
+
+I had a lot of fun working on this project (which I'm hoping comes through as you read through this document).  What you'll see below is not just a presentation of my findings but rather a walk through of my process.
+
+# Prepare
+
+In this section, I'll take a preliminary look at the data and get it ready for some analysis.
+
+## Import the Data
+
+The first step is to download and read the data from the website provided in the link.
+
+```{r import, results='hide'}
+# Download file
+download.file(url="https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD", destfile="NYPD_Shootings.csv")
+
+# Read in CSV
+NYPD <- read.csv("NYPD_Shootings.csv")
+```
+
+## Examine the Data
+
+Before we can begin the next step of tidying and transforming the data, we first need to get a better sense of what it is we're working with.
+
+``` {r examine}
+# Summarize data
+summary(NYPD)
+str(NYPD)
+```
+
+
+
+## Tidy and Transform the Data
+
+From the data exploration in the previous section, I determined that the following data tidying steps needed to occur:
+
+- Convert the following variables to factor:
+    - PERP_RACE
+    - BORO
+- Remove null, UNKNOWN, and missing values from PERP_RACE and associated records BORO
+    
+Note that other data needs to be tidied but I have limited data tidying to the variables of interest for this analysis
+
+```{r tidy}
+# Convert factor variables
+PERP_RACE <- as.factor(NYPD$PERP_RACE)
+BORO <- as.factor(NYPD$BORO)
+
+# Remove nulls
+BORO <- BORO[PERP_RACE!="(null)" & PERP_RACE!=""
+             & PERP_RACE!="UNKNOWN"]
+PERP_RACE <- PERP_RACE[PERP_RACE!="(null)" & PERP_RACE!=""
+                       & PERP_RACE!="UNKNOWN"]
+
+# Verify that these variables have been updated
+summary(PERP_RACE)
+summary(BORO)
+
+```
+
+# Explore and Analyze
+
+In this section, I'll take a closer look at the data I've tidied in the previous section
+
+## Preliminary Plots
+
+To start, I'll take a look at the variables I've selected to explore by plotting each one individually.
+
+```{r prelim}
+library(ggplot2)
+# Histogram for Boro
+ggplot(data.frame(BORO), aes(x=BORO)) + geom_bar()
+
+
+ggplot(data.frame(PERP_RACE), aes(x="", y=PERP_RACE, fill=PERP_RACE)) +
+  geom_bar(stat="identity", width=1) + 
+  coord_polar("y", start=0) +
+  theme_void()
+
+```
+## Determining association between variables
+
+One possible source of bias in an investigation of this dataset is an assumption that any one of these variables is a predictor of any one of the other variables.  For example, it would be dangerous to posit that black individuals are more likely to commit crime simply because they represent a large majority of the PERP_RACE data.  It might be possible to correct for some of this with population data for these areas, but there are still too many other factors to allow ourselves to be convinced of any predictive power of this information.  Therefore, I do not believe it is appropriate to perform any regression analysis on this data at this time.  Instead, I will determine if there are any correlations between my selected variables.
+
+``` {r analyze, results='hide'}
+library(gmodels)
+# Is Perpetrator Race Correlated with Boro?
+Ct_BORO_PERP <- CrossTable(BORO, PERP_RACE)
+Chi_BORO_PERP <- chisq.test(unlist(Ct_BORO_PERP))
+
+
+```
+
+## Looking at Results
+``` {r chisq}
+# Print resultant chi-square tests
+print(Chi_BORO_PERP)
+```
+Based on these results, there is a statistically significant association between the boro and both the victim and perpetrator race.  This is likely confounded by the demographics of these different boros, but that data was not available as part of this analysis.  It would be worth taking a closer look by adding in that data.
